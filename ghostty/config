@@ -1,0 +1,17 @@
+background-opacity = 0.70
+background-blur-radius = 20
+
+theme = tokyonight
+
+cursor-style = block
+cursor-style-blink = false
+
+mouse-hide-while-typing = true
+
+window-inherit-working-directory = false
+
+bell-features = audio
+
+keybind = super+shift+e=equalize_splits
+
+keybind = cmd+shift+t=prompt_surface_title
