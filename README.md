@@ -14,10 +14,14 @@ dotfiles/
 ## Setup on a new machine
 
 ```sh
-git clone git@github.com:PatriceDouge/dotfiles.git ~/dotfiles
-cd ~/dotfiles
+git clone git@github.com:PatriceDouge/dotfiles.git /Volumes/CaseSensitive/dotfiles
+cd /Volumes/CaseSensitive/dotfiles
 ./install.sh
 ```
+
+Clone anywhere you like — `install.sh` derives its own location, so the target
+directory doesn't matter. If you clone onto an external volume (as above), that
+volume must stay mounted for the symlinks to resolve.
 
 `install.sh` symlinks each config to where the app expects it. If a real file
 already exists at the destination, it's moved aside to `<file>.bak` first.
