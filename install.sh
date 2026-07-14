@@ -25,4 +25,11 @@ case "$(uname -s)" in
 esac
 link "$DOTFILES_DIR/ghostty/config" "$GHOSTTY_DEST"
 
+# --- Claude Code -----------------------------------------------------------
+# Link skills one at a time rather than linking ~/.claude/skills wholesale, so
+# plugin-installed skills already living there are left in place.
+for skill in "$DOTFILES_DIR"/claude/skills/*/; do
+  link "${skill%/}" "$HOME/.claude/skills/$(basename "$skill")"
+done
+
 echo "Done."

@@ -7,9 +7,16 @@ Personal configuration files, symlinked into place from this repo.
 ```
 dotfiles/
 ├── install.sh        # symlinks configs into place (idempotent, backs up existing files)
-└── ghostty/
-    └── config        # Ghostty terminal config
+├── ghostty/
+│   └── config        # Ghostty terminal config
+└── claude/
+    └── skills/       # personal Claude Code skills
+        └── pr-body/  # PR description format (features + bugs)
 ```
+
+Claude Code skills here are personal and portable — they apply in every repo.
+Repo-specific conventions (PR templates, labels, CI, team workflows) stay in that
+repo's own `.claude/` directory, and these skills defer to them.
 
 ## Setup on a new machine
 
@@ -28,10 +35,11 @@ already exists at the destination, it's moved aside to `<file>.bak` first.
 
 ## What lives where
 
-| Config  | Repo path        | Symlinked to                                                     |
-| ------- | ---------------- | --------------------------------------------------------------- |
-| Ghostty | `ghostty/config` | macOS: `~/Library/Application Support/com.mitchellh.ghostty/config` |
-|         |                  | Linux: `~/.config/ghostty/config`                               |
+| Config  | Repo path             | Symlinked to                                                     |
+| ------- | --------------------- | --------------------------------------------------------------- |
+| Ghostty | `ghostty/config`      | macOS: `~/Library/Application Support/com.mitchellh.ghostty/config` |
+|         |                       | Linux: `~/.config/ghostty/config`                               |
+| Claude  | `claude/skills/<name>` | `~/.claude/skills/<name>` (each skill linked individually, so plugin-installed skills are left alone) |
 
 ## Editing
 
