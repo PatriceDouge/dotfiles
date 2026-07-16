@@ -32,4 +32,11 @@ for skill in "$DOTFILES_DIR"/claude/skills/*/; do
   link "${skill%/}" "$HOME/.claude/skills/$(basename "$skill")"
 done
 
+# --- Codex ----------------------------------------------------------------
+# Link personal skills one at a time so built-in .system and plugin-installed
+# skills already living under ~/.codex/skills are left in place.
+for skill in "$DOTFILES_DIR"/codex/skills/*/; do
+  link "${skill%/}" "$HOME/.codex/skills/$(basename "$skill")"
+done
+
 echo "Done."

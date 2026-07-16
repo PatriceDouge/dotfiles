@@ -9,14 +9,21 @@ dotfiles/
 ├── install.sh        # symlinks configs into place (idempotent, backs up existing files)
 ├── ghostty/
 │   └── config        # Ghostty terminal config
-└── claude/
-    └── skills/       # personal Claude Code skills
-        └── pr-body/  # PR description format (features + bugs)
+├── claude/
+│   └── skills/           # personal Claude Code skills
+│       ├── agent-browser/ # default browser driver; defers to the CLI's own skills
+│       ├── pr-body/       # PR description format (features + bugs)
+│       └── pr-review/     # PR / branch review: understand e2e, then ranked findings
+└── codex/
+    └── skills/           # personal Codex skills and UI metadata
+        ├── agent-browser/ # browser driving and UI verification
+        ├── pr-body/       # template-aware PR descriptions
+        └── pr-review/     # connector-first, end-to-end PR review
 ```
 
-Claude Code skills here are personal and portable — they apply in every repo.
+Claude Code and Codex skills here are personal and portable — they apply in every repo.
 Repo-specific conventions (PR templates, labels, CI, team workflows) stay in that
-repo's own `.claude/` directory, and these skills defer to them.
+repo's own agent configuration, and these skills defer to them.
 
 ## Setup on a new machine
 
@@ -40,6 +47,7 @@ already exists at the destination, it's moved aside to `<file>.bak` first.
 | Ghostty | `ghostty/config`      | macOS: `~/Library/Application Support/com.mitchellh.ghostty/config` |
 |         |                       | Linux: `~/.config/ghostty/config`                               |
 | Claude  | `claude/skills/<name>` | `~/.claude/skills/<name>` (each skill linked individually, so plugin-installed skills are left alone) |
+| Codex   | `codex/skills/<name>`  | `~/.codex/skills/<name>` (each skill linked individually, so built-in and plugin skills are left alone) |
 
 ## Editing
 

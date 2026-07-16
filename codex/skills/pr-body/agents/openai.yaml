@@ -1,0 +1,4 @@
+interface:
+  display_name: "PR Body"
+  short_description: "Draft focused pull request descriptions"
+  default_prompt: "Use $pr-body to draft a concise pull request description."
