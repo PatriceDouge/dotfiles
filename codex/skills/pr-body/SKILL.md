@@ -55,6 +55,18 @@ Write in plain language for a reviewer who is not already immersed in the change
 
 Do not name individuals, invent rationale, use incident framing, reproduce an exhaustive changelog, or preserve empty boilerplate.
 
+## Report validation that was performed
+
+Include a validation table only when the change was actually exercised and its behavior observed. A passing automated suite is not validation; list those as commands in the test steps. Omit the section entirely when nothing was run.
+
+Place it in the testing section — the template's "How to Test" or nearest equivalent — above the reproduction steps, in three parts:
+
+1. A headline giving where it ran, when, and the outcome, such as `**Validated on staging (2026-07-15) — 9/9 PASS**`, with a clause on the setup when that setup is what makes the result trustworthy.
+2. A table with one row per check. Use `| Check | Result |` when the expectation follows from the check itself, or `| # | Test | Expected | Observed | Result |` when expected against observed is the point and the reader should be able to count passes.
+3. A caveat naming what the run did not prove — an environment that could not exercise the real code path, a check deferred, a result confirmed only indirectly.
+
+Record observations rather than intentions. Never present an unrun check as passing.
+
 ## Refine rather than regenerate
 
 For an existing PR, read the current body first through the connected GitHub app or:

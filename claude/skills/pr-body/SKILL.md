@@ -55,6 +55,20 @@ Right:    - Subfolders become a resource type in the existing bulk framework,
             inheriting its authorization, chunked execution, and per-action results.
 ```
 
+## Validation
+
+Only when you actually exercised the change and watched what happened. A passing spec suite is not validation — that's a command in the test steps. Nothing run, no section.
+
+It goes in the testing section (a template's "How to Test", or its own heading), above the repro steps, in three parts:
+
+1. **A headline** — where it ran, when, and the score. `**Validated on staging (2026-07-15) — 9/9 PASS**, in a dedicated test folder with an empty decoy folder proving no wrong-parent writes.`
+2. **A table, one row per check.** Two shapes:
+   - `| Check | Result |` when the expectation is obvious from the check itself (a round trip: toggle off → 404, toggle on → 200).
+   - `| # | Test | Expected | Observed | Result |` when expected-vs-observed is the point, and a reader should be able to count the passes.
+3. **A caveat** — what the run did *not* prove. "This staging host sits behind CloudFront, which ignores `Surrogate-*`, so the Fastly purge itself isn't observable here." This is often the most valuable line in the section; a run with a blind spot that goes unmentioned reads as a run with no blind spot.
+
+Rows record what you saw, not what you meant to check: "Nothing created; decoy empty" beats "verified nothing was created." Never table a check you didn't run.
+
 ## Where the format goes
 
 - **Repo has a PR template** (`.github/PULL_REQUEST_TEMPLATE.md`): the format above is the *content of the Summary of Changes section* — or that repo's nearest equivalent, the first "what changed" section. Read the template and fill its other sections as it asks. Never substitute your own structure for the template's, and remember that passing `--body` to `gh pr create` silently discards it.
