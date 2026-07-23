@@ -15,7 +15,8 @@ dotfiles/
 │       ├── pr-body/       # PR description format (features + bugs)
 │       └── pr-review/     # PR / branch review: understand e2e, then ranked findings
 └── codex/
-    └── skills/           # personal Codex skills and UI metadata
+    ├── AGENTS.md        # personal Codex guidance
+    └── skills/         # personal Codex skills and UI metadata
         ├── agent-browser/ # browser driving and UI verification
         ├── pr-body/       # template-aware PR descriptions
         └── pr-review/     # connector-first, end-to-end PR review
@@ -48,6 +49,14 @@ already exists at the destination, it's moved aside to `<file>.bak` first.
 |         |                       | Linux: `~/.config/ghostty/config`                               |
 | Claude  | `claude/skills/<name>` | `~/.claude/skills/<name>` (each skill linked individually, so plugin-installed skills are left alone) |
 | Codex   | `codex/skills/<name>`  | `~/.codex/skills/<name>` (each skill linked individually, so built-in and plugin skills are left alone) |
+|         | safety defaults        | merged into `~/.codex/config.toml` without tracking credentials or machine-specific state |
+|         | `codex/AGENTS.md`      | `~/.codex/AGENTS.md`                                            |
+
+The portable Codex defaults keep the sandbox in `workspace-write`, retain
+interactive approval boundaries, and send eligible approval requests through
+Auto-review. Global guidance tells Codex to use a recoverable Trash operation
+instead of permanent deletion commands. Machine-specific guidance belongs in
+the untracked `~/.codex/AGENTS.local.md` file.
 
 ## Editing
 
