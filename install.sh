@@ -57,6 +57,27 @@ case "$(uname -s)" in
 esac
 link "$DOTFILES_DIR/ghostty/config" "$GHOSTTY_DEST"
 
+# --- CLI scripts -----------------------------------------------------------
+for script in "$DOTFILES_DIR"/bin/*; do
+  [ -e "$script" ] || continue
+  link "$script" "$HOME/.local/bin/$(basename "$script")"
+done
+
+# --- launchd agents (macOS) ------------------------------------------------
+# launchd wants real files, not symlinks, so copy the plist and (re)load it.
+if [ "$(uname -s)" = "Darwin" ]; then
+  for plist in "$DOTFILES_DIR"/launchd/*.plist; do
+    [ -e "$plist" ] || continue
+    label="$(basename "$plist" .plist)"
+    dest="$HOME/Library/LaunchAgents/$(basename "$plist")"
+    mkdir -p "$(dirname "$dest")"
+    cp "$plist" "$dest"
+    launchctl bootout "gui/$(id -u)/$label" 2>/dev/null || true
+    launchctl bootstrap "gui/$(id -u)" "$dest"
+    echo "Loaded $label"
+  done
+fi
+
 # --- Claude Code -----------------------------------------------------------
 # Link skills one at a time rather than linking ~/.claude/skills wholesale, so
 # plugin-installed skills already living there are left in place.

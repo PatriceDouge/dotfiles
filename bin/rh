@@ -1,0 +1,3 @@
+#!/bin/zsh
+# rh — "resume here": restore the saved claude/codex session for this pane's directory.
+exec "$HOME/.local/bin/ghostty-sessions" resume "$@"

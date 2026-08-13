@@ -1,0 +1,382 @@
+#!/bin/zsh
+# ghostty-sessions — snapshot running claude/codex CLI sessions and restore them
+# after a reboot (managed-update survival kit).
+#
+# Commands:
+#   snapshot [--quiet]        Record all running claude/codex sessions to a manifest.
+#                             (launchd runs this every 10 min; safe to run by hand.)
+#   list [--latest|--preboot] Show the manifest a restore would use.
+#   resume [-n] [-a]          Resume the saved session for the current directory in
+#                             this pane (alias: rh). Picks interactively if several.
+#   open [--print] [--yes]    Open one new Ghostty window per un-restored session.
+#   down                      Snapshot, close all claude/codex sessions, quit Ghostty.
+#                             Run right before letting a managed update restart.
+#   path                      Print the manifest file a restore would use.
+#
+# State lives in ~/.local/state/ghostty-sessions/history. Restore commands default
+# to the newest snapshot taken BEFORE the last reboot while that snapshot still has
+# un-resumed sessions; otherwise the newest snapshot. Override with --latest/--preboot.
+#
+# Layout (windows/tabs/splits/titles) is restored natively by Ghostty via
+# `window-save-state = always`; this tool restores the *sessions inside the panes*.
+
+export PATH="/opt/homebrew/bin:/usr/local/bin:$HOME/.local/bin:/usr/bin:/bin:/usr/sbin:/sbin:$PATH"
+
+SCRIPT_PATH=${0:A}
+STATE_DIR="$HOME/.local/state/ghostty-sessions"
+HIST_DIR="$STATE_DIR/history"
+mkdir -p "$HIST_DIR"
+
+err() { print -u2 -- "$@"; }
+die() { err "$@"; exit 1; }
+
+boot_epoch() { sysctl -n kern.boottime | sed -E 's/.*sec = ([0-9]+).*/\1/'; }
+human_ts()   { date -r "$1" '+%a %b %d %H:%M'; }
+
+# ---------- collection ----------
+
+claude_registry_files() {
+  local f pid
+  for f in "$HOME"/.claude/sessions/*.json(N); do
+    pid=$(jq -r 'select(.kind == "interactive") | .pid // empty' "$f" 2>/dev/null)
+    [[ -n "$pid" ]] || continue
+    ps -p "$pid" -o command= 2>/dev/null | grep -q claude || continue
+    print -- "$f"
+  done
+}
+
+codex_pids() {
+  ps -axo pid=,command= | while read -r pid rest; do
+    local first=${rest%% *}
+    [[ ${first:t} == codex ]] && print -- "$pid"
+  done
+}
+
+codex_rollout_for_pid() {
+  # A resumed codex holds the old and new rollout files open; the newest is live.
+  local pid=$1 f newest=""
+  for f in $(lsof -Fn -p "$pid" 2>/dev/null | sed -n 's/^n//p' | grep -E '/\.codex/sessions/.*\.jsonl$' | sort -u); do
+    [[ -z $newest || $f -nt $newest ]] && newest=$f
+  done
+  [[ -n $newest ]] && print -- "$newest"
+}
+
+claude_summary() {
+  local id=$1 cwd=$2
+  local f="$HOME/.claude/projects/${cwd//[^[:alnum:]]/-}/$id.jsonl"
+  [[ -f $f ]] || return 0
+  head -n 120 "$f" 2>/dev/null \
+    | jq -r 'try (select(.type=="user") | .message.content | if type=="string" then . else (map(select(.type=="text")|.text)|.[0] // empty) end) catch empty' 2>/dev/null \
+    | grep -vE '^[[:space:]]*($|<|Caveat:)' | head -n 1 | tr '\t' ' ' | cut -c1-90
+  return 0
+}
+
+codex_summary() {
+  local f=$1
+  head -n 300 "$f" 2>/dev/null \
+    | jq -r 'try (select(.type=="response_item") | .payload | select(.type=="message" and .role=="user")
+             | .content | map(select(.type=="input_text")|.text) | .[0] // empty
+             | select((startswith("# AGENTS.md") or startswith("<")) | not)) catch empty' 2>/dev/null \
+    | grep -vE '^[[:space:]]*$' | head -n 1 | tr '\t' ' ' | cut -c1-90
+  return 0
+}
+
+collect_sessions() {  # one JSON object per line
+  local f id cwd name sstatus sum
+  for f in $(claude_registry_files); do
+    id=$(jq -r '.sessionId // empty' "$f");  cwd=$(jq -r '.cwd // empty' "$f")
+    name=$(jq -r '.name // ""' "$f");        sstatus=$(jq -r '.status // ""' "$f")
+    [[ -n "$id" && -n "$cwd" ]] || continue
+    sum=$(claude_summary "$id" "$cwd")
+    jq -cn --arg id "$id" --arg cwd "$cwd" --arg name "$name" --arg status "$sstatus" --arg sum "$sum" \
+      '{tool:"claude", id:$id, cwd:$cwd, name:$name, status:$status, summary:$sum}'
+  done
+  local pid rollout base
+  codex_pids | while read -r pid; do
+    rollout=$(codex_rollout_for_pid "$pid")
+    [[ -n $rollout ]] || continue
+    id=$(head -n 1 "$rollout" | jq -r '.payload.session_id // .payload.id // empty' 2>/dev/null)
+    if [[ -z $id ]]; then base=${${rollout:t}%.jsonl}; id=${base[-36,-1]}; fi
+    cwd=$(lsof -a -p "$pid" -d cwd -Fn 2>/dev/null | sed -n 's/^n//p' | head -n 1)
+    [[ -n $cwd ]] || cwd=$(head -n 1 "$rollout" | jq -r '.payload.cwd // empty' 2>/dev/null)
+    [[ -n "$id" && -n "$cwd" ]] || continue
+    sum=$(codex_summary "$rollout")
+    jq -cn --arg id "$id" --arg cwd "$cwd" --arg name "${cwd:t}" --arg sum "$sum" \
+      '{tool:"codex", id:$id, cwd:$cwd, name:$name, status:"", summary:$sum}'
+  done
+}
+
+live_session_ids() {  # fast version, no summaries — used to detect a restore-in-progress
+  local f pid rollout base
+  for f in $(claude_registry_files); do jq -r '.sessionId // empty' "$f"; done
+  codex_pids | while read -r pid; do
+    rollout=$(codex_rollout_for_pid "$pid")
+    [[ -n $rollout ]] || continue
+    head -n 1 "$rollout" | jq -r '.payload.session_id // empty' 2>/dev/null
+    base=${${rollout:t}%.jsonl}; print -- "${base[-36,-1]}"
+  done
+}
+
+# ---------- manifests & claims ----------
+
+claims_for() { print -- "${1:h}/claims-${${1:t:r}#manifest-}"; }
+
+newest_manifest() { local f; for f in "$HIST_DIR"/manifest-*.json(N.On); do print -- "$f"; return 0; done; return 1; }
+
+preboot_manifest() {
+  local boot=$(boot_epoch) f ts
+  for f in "$HIST_DIR"/manifest-*.json(N.On); do
+    ts=${${f:t:r}#manifest-}
+    (( ts < boot )) && { print -- "$f"; return 0; }
+  done
+  return 1
+}
+
+# Default: prefer the pre-reboot snapshot while it still has sessions that are
+# neither resumed (claimed) nor currently running, and the reboot was < 7 days ago.
+pick_manifest() {
+  local mode=${1:-auto}
+  case $mode in
+    latest)  newest_manifest; return $?;;
+    preboot) preboot_manifest || newest_manifest; return $?;;
+  esac
+  local newest preboot
+  newest=$(newest_manifest) || return 1
+  preboot=$(preboot_manifest) || { print -- "$newest"; return 0; }
+  [[ $preboot == $newest ]] && { print -- "$newest"; return 0; }
+  local boot=$(boot_epoch) now=$(date +%s)
+  (( now - boot > 7 * 86400 )) && { print -- "$newest"; return 0; }
+  local claims=$(claims_for "$preboot") tmp_live
+  tmp_live=$(mktemp)
+  live_session_ids | sort -u > "$tmp_live"
+  local pending
+  pending=$(jq -r '.sessions[].id' "$preboot" | while read -r id; do
+    grep -qxF "$id" "$tmp_live" && continue
+    [[ -f $claims ]] && grep -qxF "$id" "$claims" && continue
+    print -- "$id"
+  done | head -n 1)
+  rm -f "$tmp_live"
+  if [[ -n $pending ]]; then print -- "$preboot"; else print -- "$newest"; fi
+}
+
+resume_cmd_str() {
+  case $1 in
+    claude) print -- "claude --resume $2";;
+    codex)  print -- "codex resume $2";;
+  esac
+}
+
+# ---------- commands ----------
+
+cmd_snapshot() {
+  local quiet=0 a
+  for a in "$@"; do [[ $a == --quiet ]] && quiet=1; done
+  local tmp=$(mktemp)
+  collect_sessions > "$tmp"
+  local n=$(grep -c . "$tmp")
+  if (( n == 0 )); then
+    (( quiet )) || print -- "No running claude/codex sessions — keeping previous snapshots."
+    rm -f "$tmp"; return 0
+  fi
+  local ts=$(date +%s)
+  local out="$HIST_DIR/manifest-$ts.json"
+  jq -s --argjson ts "$ts" '{savedAt: $ts, sessions: .}' "$tmp" > "$out"
+  rm -f "$tmp"
+  # prune old snapshots (keep 500) and their claims files
+  local f
+  ls -t "$HIST_DIR"/manifest-*.json 2>/dev/null | tail -n +501 | while read -r f; do
+    rm -f "$f" "$(claims_for "$f")"
+  done
+  (( quiet )) || print -- "Saved $n session(s) → $out"
+}
+
+describe_manifest() {
+  local m=$1 ts=$(jq -r '.savedAt' "$1") boot=$(boot_epoch) when
+  when=$(human_ts "$ts")
+  if (( ts < boot )); then print -- "snapshot from $when (before last reboot)"
+  else print -- "snapshot from $when"; fi
+}
+
+cmd_list() {
+  local mode=auto a
+  for a in "$@"; do
+    case $a in --latest) mode=latest;; --preboot) mode=preboot;; esac
+  done
+  local m; m=$(pick_manifest $mode) || die "No snapshots yet — run: ghostty-sessions snapshot"
+  local claims=$(claims_for "$m")
+  print -- "Using $(describe_manifest "$m")"
+  print -- ""
+  local tool id name sstatus cwd summary mark
+  jq -r 'def nz: if . == null or . == "" then "-" else . end;
+         .sessions[] | [.tool, .id, (.name|nz), (.status|nz), .cwd, (.summary|nz)] | @tsv' "$m" \
+  | while IFS=$'\t' read -r tool id name sstatus cwd summary; do
+    mark=" "
+    [[ -f $claims ]] && grep -qxF "$id" "$claims" && mark="✓"
+    printf "%s %-6s %-18s %-28s %s\n" "$mark" "$tool" "$name" "${cwd/#$HOME/~}" "${summary:0:70}"
+    printf "         cd %s && %s\n" "${cwd/#$HOME/~}" "$(resume_cmd_str "$tool" "$id")"
+  done
+  print -- ""
+  print -- "✓ = already resumed. In a pane: rh   ·   all at once: ghostty-sessions open"
+}
+
+do_resume() {
+  local tool=$1 id=$2 cwd=$3 dry=$4 claims=$5
+  local rcmd=$(resume_cmd_str "$tool" "$id")
+  if (( dry )); then print -- "cd ${cwd/#$HOME/~} && $rcmd"; return 0; fi
+  [[ -d $cwd ]] || die "Directory no longer exists: $cwd"
+  cd "$cwd" || die "Cannot cd to $cwd"
+  print -- "$id" >> "$claims"
+  print -- "Resuming $tool in ${cwd/#$HOME/~} …"
+  case $tool in
+    claude) exec claude --resume "$id";;
+    codex)  exec codex resume "$id";;
+  esac
+}
+
+cmd_resume() {
+  local mode=auto dry=0 listonly=0 anydir=0 a
+  for a in "$@"; do
+    case $a in
+      --latest) mode=latest;; --preboot) mode=preboot;;
+      -n|--dry-run) dry=1;; -l|--list) listonly=1;; -a|--any) anydir=1;;
+      -h|--help) print -- "usage: rh [-n] [-l] [-a] [--latest|--preboot]"; return 0;;
+    esac
+  done
+  local m; m=$(pick_manifest $mode) || die "No snapshots yet — run: ghostty-sessions snapshot"
+  local claims=$(claims_for "$m"); touch "$claims"
+  local filter='.sessions[] | select(.cwd == $cwd)'
+  (( anydir )) && filter='.sessions[]'
+  local -a rows avail
+  rows=("${(@f)$(jq -r --arg cwd "$PWD" "def nz: if . == null or . == \"\" then \"-\" else . end; $filter | [.tool, .id, .cwd, (.name|nz), (.status|nz), (.summary|nz)] | @tsv" "$m")}")
+  local row tool id cwd name sstatus summary
+  avail=()
+  for row in "${rows[@]}"; do
+    [[ -n $row ]] || continue
+    id=$(print -- "$row" | cut -f2)
+    grep -qxF "$id" "$claims" || avail+=("$row")
+  done
+  if (( ${#avail} == 0 )); then
+    if (( ${#rows} > 0 )) && [[ -n ${rows[1]} ]]; then
+      err "All saved sessions for this directory were already resumed ($(describe_manifest "$m"))."
+    else
+      err "No saved sessions for ${PWD/#$HOME/~} ($(describe_manifest "$m"))."
+      err "Directories with un-resumed sessions:"
+      jq -r '.sessions[].cwd' "$m" | sort -u | sed "s|^$HOME|~|; s/^/  /" >&2
+      err "Use rh -a to pick from all of them."
+    fi
+    return 1
+  fi
+  local pick=1
+  if (( ${#avail} > 1 )) && (( listonly == 0 )); then
+    local where=${PWD/#$HOME/~}
+    (( anydir )) && where="all directories"
+    print -- "Sessions saved for $where — $(describe_manifest "$m"):"
+    local i=1
+    for row in "${avail[@]}"; do
+      IFS=$'\t' read -r tool id cwd name sstatus summary <<< "$row"
+      printf "  %d) %-6s %-18s %-28s %s\n" "$i" "$tool" "$name" "${cwd/#$HOME/~}" "${summary:0:60}"
+      (( i++ ))
+    done
+    if (( dry == 0 )); then
+      [[ -t 0 ]] || die "Multiple matches; run interactively or use -l."
+      read "pick?Resume which? [1-${#avail}] "
+      [[ $pick == <1-> ]] && (( pick >= 1 && pick <= ${#avail} )) || die "Invalid choice."
+    fi
+  fi
+  if (( listonly || (dry && ${#avail} > 1) )); then
+    for row in "${avail[@]}"; do
+      IFS=$'\t' read -r tool id cwd name sstatus summary <<< "$row"
+      print -- "cd ${cwd/#$HOME/~} && $(resume_cmd_str "$tool" "$id")"
+    done
+    return 0
+  fi
+  IFS=$'\t' read -r tool id cwd name sstatus summary <<< "${avail[$pick]}"
+  do_resume "$tool" "$id" "$cwd" "$dry" "$claims"
+}
+
+cmd_open() {
+  local mode=auto printonly=0 yes=0 a
+  for a in "$@"; do
+    case $a in
+      --latest) mode=latest;; --preboot) mode=preboot;;
+      --print) printonly=1;; --yes|-y) yes=1;;
+    esac
+  done
+  local m; m=$(pick_manifest $mode) || die "No snapshots yet — run: ghostty-sessions snapshot"
+  local claims=$(claims_for "$m"); touch "$claims"
+  local -a avail
+  local row tool id cwd name sstatus summary
+  avail=()
+  while IFS=$'\t' read -r tool id cwd name sstatus summary; do
+    [[ -n $id ]] || continue
+    grep -qxF "$id" "$claims" || avail+=("$tool"$'\t'"$id"$'\t'"$cwd")
+  done < <(jq -r 'def nz: if . == null or . == "" then "-" else . end;
+                  .sessions[] | [.tool, .id, .cwd, (.name|nz), (.status|nz), (.summary|nz)] | @tsv' "$m")
+  (( ${#avail} == 0 )) && { print -- "Nothing to open — all sessions in $(describe_manifest "$m") already resumed."; return 0; }
+  local rcmd
+  if (( printonly )); then
+    for row in "${avail[@]}"; do
+      IFS=$'\t' read -r tool id cwd <<< "$row"
+      rcmd=$(resume_cmd_str "$tool" "$id")
+      printf "open -na Ghostty.app --args -e /bin/zsh -il -c %q\n" "cd ${(q)cwd} && $rcmd; exec /bin/zsh -il"
+    done
+    return 0
+  fi
+  print -- "Will open ${#avail} Ghostty window(s), one per session ($(describe_manifest "$m"))."
+  if (( yes == 0 )); then
+    [[ -t 0 ]] || die "Not a terminal; use --yes."
+    local REPLY
+    read -q "REPLY?Proceed? [y/N] " || { print; return 1; }
+    print
+  fi
+  for row in "${avail[@]}"; do
+    IFS=$'\t' read -r tool id cwd <<< "$row"
+    [[ -d $cwd ]] || { err "Skipping $id — directory gone: $cwd"; continue; }
+    rcmd=$(resume_cmd_str "$tool" "$id")
+    open -na Ghostty.app --args -e /bin/zsh -il -c "cd ${(q)cwd} && $rcmd; exec /bin/zsh -il" \
+      && print -- "$id" >> "$claims" \
+      && print -- "  opened: $tool in ${cwd/#$HOME/~}"
+    sleep 0.4
+  done
+}
+
+cmd_down() {
+  cmd_snapshot
+  local -a pids
+  local f pid
+  pids=()
+  for f in $(claude_registry_files); do
+    pid=$(jq -r '.pid' "$f"); pids+=("$pid")
+  done
+  for pid in $(codex_pids); do pids+=("$pid"); done
+  if (( ${#pids} > 0 )); then
+    print -- "Closing ${#pids} session(s) — transcripts are already saved; resume is safe."
+    kill -TERM "${pids[@]}" 2>/dev/null
+    local i
+    for i in {1..12}; do
+      sleep 0.5
+      local alive=0
+      for pid in "${pids[@]}"; do kill -0 "$pid" 2>/dev/null && alive=1; done
+      (( alive == 0 )) && break
+    done
+    for pid in "${pids[@]}"; do kill -0 "$pid" 2>/dev/null && kill -KILL "$pid" 2>/dev/null; done
+  fi
+  print -- "Quitting Ghostty (layout is saved by window-save-state)."
+  print -- "If Ghostty asks for confirmation, some other process (vim, tail, ...) is still running."
+  nohup /bin/zsh -c 'sleep 0.5; osascript -e "tell application \"Ghostty\" to quit"' >/dev/null 2>&1 &!
+}
+
+usage() {
+  sed -n '2,22p' "$SCRIPT_PATH" | sed 's/^# \{0,1\}//'
+}
+
+case "${1:-help}" in
+  snapshot) shift; cmd_snapshot "$@";;
+  list)     shift; cmd_list "$@";;
+  resume)   shift; cmd_resume "$@";;
+  open)     shift; cmd_open "$@";;
+  down)     shift; cmd_down "$@";;
+  path)     shift; pick_manifest "${1:-auto}";;
+  help|-h|--help) usage;;
+  *) usage; exit 1;;
+esac

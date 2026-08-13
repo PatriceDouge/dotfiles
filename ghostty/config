@@ -15,3 +15,6 @@ bell-features = audio
 keybind = super+shift+e=equalize_splits
 
 keybind = cmd+shift+t=prompt_surface_title
+
+# Restore windows/tabs/splits (incl. titles and per-pane cwd) after quit/restart
+window-save-state = always

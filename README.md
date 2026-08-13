@@ -7,6 +7,11 @@ Personal configuration files, symlinked into place from this repo.
 ```
 dotfiles/
 ├── install.sh        # symlinks configs into place (idempotent, backs up existing files)
+├── bin/
+│   ├── ghostty-sessions  # snapshot/restore claude+codex CLI sessions across restarts
+│   └── rh                # "resume here": restore the saved session for a pane's cwd
+├── launchd/
+│   └── com.patricedouge.ghostty-sessions.plist  # auto-snapshot sessions every 10 min
 ├── ghostty/
 │   └── config        # Ghostty terminal config
 ├── claude/
@@ -47,6 +52,8 @@ already exists at the destination, it's moved aside to `<file>.bak` first.
 | ------- | --------------------- | --------------------------------------------------------------- |
 | Ghostty | `ghostty/config`      | macOS: `~/Library/Application Support/com.mitchellh.ghostty/config` |
 |         |                       | Linux: `~/.config/ghostty/config`                               |
+| Scripts | `bin/<name>`          | `~/.local/bin/<name>`                                           |
+| launchd | `launchd/<label>.plist` | copied (not symlinked — launchd wants real files) to `~/Library/LaunchAgents/` and loaded via `launchctl bootstrap` |
 | Claude  | `claude/skills/<name>` | `~/.claude/skills/<name>` (each skill linked individually, so plugin-installed skills are left alone) |
 | Codex   | `codex/skills/<name>`  | `~/.codex/skills/<name>` (each skill linked individually, so built-in and plugin skills are left alone) |
 |         | safety defaults        | merged into `~/.codex/config.toml` without tracking credentials or machine-specific state |
