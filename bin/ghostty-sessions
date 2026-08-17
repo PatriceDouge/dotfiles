@@ -6,9 +6,17 @@
 #   snapshot [--quiet]        Record all running claude/codex sessions to a manifest.
 #                             (launchd runs this every 10 min; safe to run by hand.)
 #   list [--latest|--preboot] Show the manifest a restore would use.
-#   resume [-n] [-a]          Resume the saved session for the current directory in
+#   resume [-n] [-a|--next]   Resume the saved session for the current directory in
 #                             this pane (alias: rh). Picks interactively if several.
-#   open [--print] [--yes]    Open one new Ghostty window per un-restored session.
+#                             --next: take the first un-restored session from the
+#                             manifest, any directory (used by tab automation).
+#   open [--windows] [--print] [--yes]
+#                             Restore all un-restored sessions: as tabs in the
+#                             frontmost Ghostty window (default; needs Accessibility
+#                             permission), or one window each with --windows.
+#   reset                     Recompute what counts as restored: currently-running
+#                             sessions stay checked off, dead ones become available
+#                             to open / rh again.
 #   down                      Snapshot, close all claude/codex sessions, quit Ghostty.
 #                             Run right before letting a managed update restart.
 #   path                      Print the manifest file a restore would use.
@@ -30,7 +38,9 @@ mkdir -p "$HIST_DIR"
 err() { print -u2 -- "$@"; }
 die() { err "$@"; exit 1; }
 
-boot_epoch() { sysctl -n kern.boottime | sed -E 's/.*sec = ([0-9]+).*/\1/'; }
+# kern.boottime looks like: { sec = 1786979526, usec = 763427 } ... — anchor to
+# the leading "{ sec" so the pattern can't latch onto "usec" instead.
+boot_epoch() { sysctl -n kern.boottime | sed -nE 's/^\{ *sec *= *([0-9]+).*/\1/p'; }
 human_ts()   { date -r "$1" '+%a %b %d %H:%M'; }
 
 # ---------- collection ----------
@@ -234,16 +244,52 @@ do_resume() {
 }
 
 cmd_resume() {
-  local mode=auto dry=0 listonly=0 anydir=0 a
+  local mode=auto dry=0 listonly=0 anydir=0 pick_next=0 a
   for a in "$@"; do
     case $a in
       --latest) mode=latest;; --preboot) mode=preboot;;
       -n|--dry-run) dry=1;; -l|--list) listonly=1;; -a|--any) anydir=1;;
-      -h|--help) print -- "usage: rh [-n] [-l] [-a] [--latest|--preboot]"; return 0;;
+      --next) pick_next=1;;
+      -h|--help) print -- "usage: rh [-n] [-l] [-a|--next] [--latest|--preboot]"; return 0;;
     esac
   done
   local m; m=$(pick_manifest $mode) || die "No snapshots yet — run: ghostty-sessions snapshot"
   local claims=$(claims_for "$m"); touch "$claims"
+  if (( pick_next )); then
+    # Take the first un-restored session, any directory. Serialized via a lock so
+    # several fresh tabs running `rh --next` at once can't grab the same session.
+    local lock="$STATE_DIR/.claim.lock" tries=0 found=0
+    until mkdir "$lock" 2>/dev/null; do
+      (( ++tries > 100 )) && die "Claim lock stuck; remove with: rmdir $lock"
+      sleep 0.1
+    done
+    local tool id cwd name sstatus summary
+    while IFS=$'\t' read -r tool id cwd name sstatus summary; do
+      [[ -n $id ]] || continue
+      grep -qxF "$id" "$claims" && continue
+      found=1; break
+    done < <(jq -r 'def nz: if . == null or . == "" then "-" else . end;
+                    .sessions[] | [.tool, .id, .cwd, (.name|nz), (.status|nz), (.summary|nz)] | @tsv' "$m")
+    if (( found == 0 )); then
+      rmdir "$lock" 2>/dev/null
+      print -- "All sessions from $(describe_manifest "$m") already resumed."
+      return 0
+    fi
+    if (( dry )); then
+      rmdir "$lock" 2>/dev/null
+      print -- "cd ${cwd/#$HOME/~} && $(resume_cmd_str "$tool" "$id")"
+      return 0
+    fi
+    print -- "$id" >> "$claims"
+    rmdir "$lock" 2>/dev/null
+    [[ -d $cwd ]] || die "Directory no longer exists: $cwd"
+    cd "$cwd" || die "Cannot cd to $cwd"
+    print -- "Resuming $tool in ${cwd/#$HOME/~} …"
+    case $tool in
+      claude) exec claude --resume "$id";;
+      codex)  exec codex resume "$id";;
+    esac
+  fi
   local filter='.sessions[] | select(.cwd == $cwd)'
   (( anydir )) && filter='.sessions[]'
   local -a rows avail
@@ -295,11 +341,12 @@ cmd_resume() {
 }
 
 cmd_open() {
-  local mode=auto printonly=0 yes=0 a
+  local mode=auto printonly=0 yes=0 style=tabs a
   for a in "$@"; do
     case $a in
       --latest) mode=latest;; --preboot) mode=preboot;;
       --print) printonly=1;; --yes|-y) yes=1;;
+      --windows) style=windows;; --tabs) style=tabs;;
     esac
   done
   local m; m=$(pick_manifest $mode) || die "No snapshots yet — run: ghostty-sessions snapshot"
@@ -322,12 +369,47 @@ cmd_open() {
     done
     return 0
   fi
-  print -- "Will open ${#avail} Ghostty window(s), one per session ($(describe_manifest "$m"))."
+  if [[ $style == tabs ]]; then
+    print -- "Will open ${#avail} tab(s) in the frontmost Ghostty window ($(describe_manifest "$m"))."
+  else
+    print -- "Will open ${#avail} Ghostty window(s), one per session ($(describe_manifest "$m"))."
+  fi
   if (( yes == 0 )); then
     [[ -t 0 ]] || die "Not a terminal; use --yes."
     local REPLY
     read -q "REPLY?Proceed? [y/N] " || { print; return 1; }
     print
+  fi
+  if [[ $style == tabs ]]; then
+    # No CLI for tabs on macOS, so drive Cmd+T and type `rh --next` into each new
+    # tab; the claim happens inside the tab, so a failed run claims nothing.
+    print -- "Opening ${#avail} tab(s) — hands off the keyboard/mouse for ~$(( ${#avail} * 2 + 1 ))s."
+    if ! osascript - "${#avail}" <<'APPLESCRIPT'
+on run argv
+	set n to (item 1 of argv) as integer
+	tell application "Ghostty" to activate
+	delay 0.5
+	repeat n times
+		tell application "System Events" to tell process "Ghostty"
+			keystroke "t" using command down
+			delay 1.0
+			keystroke "rh --next"
+			key code 36
+			delay 0.7
+		end tell
+	end repeat
+end run
+APPLESCRIPT
+    then
+      err ""
+      err "Tab automation failed — Ghostty likely needs Accessibility permission:"
+      err "  System Settings → Privacy & Security → Accessibility → enable Ghostty"
+      err "Then rerun, or fall back to: ghostty-sessions open --windows"
+      return 1
+    fi
+    print -- "Done — each tab picked up the next un-restored session."
+    print -- "Check with: ghostty-sessions list"
+    return 0
   fi
   for row in "${avail[@]}"; do
     IFS=$'\t' read -r tool id cwd <<< "$row"
@@ -338,6 +420,29 @@ cmd_open() {
       && print -- "  opened: $tool in ${cwd/#$HOME/~}"
     sleep 0.4
   done
+}
+
+cmd_reset() {
+  local mode=auto a
+  for a in "$@"; do
+    case $a in --latest) mode=latest;; --preboot) mode=preboot;; esac
+  done
+  local m; m=$(pick_manifest $mode) || die "No snapshots yet — run: ghostty-sessions snapshot"
+  local claims=$(claims_for "$m")
+  local tmp_live=$(mktemp)
+  live_session_ids | sort -u > "$tmp_live"
+  local kept=0 freed=0 id
+  : > "$claims.new"
+  while read -r id; do
+    if grep -qxF "$id" "$tmp_live"; then
+      print -- "$id" >> "$claims.new"; (( kept += 1 ))
+    else
+      (( freed += 1 ))
+    fi
+  done < <(jq -r '.sessions[].id' "$m")
+  mv "$claims.new" "$claims"
+  rm -f "$tmp_live"
+  print -- "$(describe_manifest "$m"): $kept running session(s) stay ✓, $freed now available to rh / open."
 }
 
 cmd_down() {
@@ -367,7 +472,7 @@ cmd_down() {
 }
 
 usage() {
-  sed -n '2,22p' "$SCRIPT_PATH" | sed 's/^# \{0,1\}//'
+  awk 'NR == 1 { next } /^#/ { sub(/^# ?/, ""); print; next } { exit }' "$SCRIPT_PATH"
 }
 
 case "${1:-help}" in
@@ -375,6 +480,7 @@ case "${1:-help}" in
   list)     shift; cmd_list "$@";;
   resume)   shift; cmd_resume "$@";;
   open)     shift; cmd_open "$@";;
+  reset)    shift; cmd_reset "$@";;
   down)     shift; cmd_down "$@";;
   path)     shift; pick_manifest "${1:-auto}";;
   help|-h|--help) usage;;
