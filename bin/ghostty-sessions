@@ -4,7 +4,9 @@
 #
 # Commands:
 #   snapshot [--quiet]        Record all running claude/codex sessions to a manifest.
-#                             (launchd runs this every 10 min; safe to run by hand.)
+#                             Writes only when the session set changed, so each
+#                             manifest marks a real event. (launchd runs this every
+#                             10 min; safe to run by hand.)
 #   list [--latest|--preboot] Show the manifest a restore would use.
 #   resume [-n] [-a|--next]   Resume the saved session for the current directory in
 #                             this pane (alias: rh). Picks interactively if several.
@@ -190,6 +192,20 @@ cmd_snapshot() {
   if (( n == 0 )); then
     (( quiet )) || print -- "No running claude/codex sessions — keeping previous snapshots."
     rm -f "$tmp"; return 0
+  fi
+
+  # The session set is stable for hours at a time, so most runs would rewrite a
+  # byte-identical manifest. Skip those: an identical snapshot adds no recovery
+  # value and buries the ones that mark a real change (a session started/ended).
+  local newest prev cur
+  if newest=$(newest_manifest); then
+    prev=$(jq -cS '.sessions' "$newest" 2>/dev/null)
+    cur=$(jq -cS -s '.' "$tmp" 2>/dev/null)
+    if [[ -n $prev && $prev == $cur ]]; then
+      rm -f "$tmp"
+      (( quiet )) || print -- "No change since $(human_ts "$(jq -r .savedAt "$newest")") — keeping ${newest:t}"
+      return 0
+    fi
   fi
   local ts=$(date +%s)
   local out="$HIST_DIR/manifest-$ts.json"
