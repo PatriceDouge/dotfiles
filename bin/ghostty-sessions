@@ -34,6 +34,9 @@ SCRIPT_PATH=${0:A}
 STATE_DIR="$HOME/.local/state/ghostty-sessions"
 HIST_DIR="$STATE_DIR/history"
 mkdir -p "$HIST_DIR"
+# Manifests record each session's opening prompt, so keep the state tree owner-only.
+# Locking the directories is enough: other users cannot traverse in to reach the files.
+chmod 700 "$STATE_DIR" "$HIST_DIR" 2>/dev/null
 
 err() { print -u2 -- "$@"; }
 die() { err "$@"; exit 1; }
