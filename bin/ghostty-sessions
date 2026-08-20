@@ -383,19 +383,19 @@ cmd_open() {
   if [[ $style == tabs ]]; then
     # No CLI for tabs on macOS, so drive Cmd+T and type `rh --next` into each new
     # tab; the claim happens inside the tab, so a failed run claims nothing.
-    print -- "Opening ${#avail} tab(s) — hands off the keyboard/mouse for ~$(( ${#avail} * 2 + 1 ))s."
+    print -- "Opening ${#avail} tab(s) — hands off the keyboard/mouse for ~$(( ${#avail} * 3 + 2 ))s."
     if ! osascript - "${#avail}" <<'APPLESCRIPT'
 on run argv
 	set n to (item 1 of argv) as integer
 	tell application "Ghostty" to activate
-	delay 0.5
+	delay 1.5
 	repeat n times
 		tell application "System Events" to tell process "Ghostty"
 			keystroke "t" using command down
-			delay 1.0
+			delay 1.8
 			keystroke "rh --next"
 			key code 36
-			delay 0.7
+			delay 1.2
 		end tell
 	end repeat
 end run
