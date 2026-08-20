@@ -55,6 +55,59 @@ Right:    - Subfolders become a resource type in the existing bulk framework,
             inheriting its authorization, chunked execution, and per-action results.
 ```
 
+## Optional request-flow diagrams
+
+Do not add a diagram by default. When the user requests a call stack, request flow, or execution-flow diagram, add a compact fenced `text` diagram under `How` or `Solution`. Introduce it as "The high-level request flow is:" or "The request and service execution flow is:". Call it a call stack only when it shows exact runtime method nesting.
+
+Use this shape:
+
+```text
+<Request>
+        |
+        ├── <existing entry point>
+        └── <alternate or future entry point>
+        |
+        ▼
+<Shared service>::<Operation>#call
+        ├── <operation-specific checks>
+        └── <shared boundary>
+                ├── <transaction, authorization, lock, or version check>
+                └── <selected operation>
+                        ├── <operation A and notable effects>
+                        └── <operation B and notable effects>
+        |
+        ▼
+<Commit, result, or externally visible side effect>
+```
+
+Keep the flow top-to-bottom, indent according to actual nesting, distinguish current from future entry points, and show only the layers a reviewer needs. Follow it with bullets only when they add decisions or semantics not already visible in the diagram.
+
+## Optional flow diffs
+
+Do not add a flow diff by default. Add one only when the user asks for a before/after flow, flow diff, call-stack diff, or comparable execution-path comparison. Use a flow diff to show how an existing request path changed; use the request-flow diagram above when only the current architecture matters.
+
+Place it under `How` or `Solution`, normally as `## Flow change`, and use a fenced `diff` block. Introduce it with one sentence identifying what stays unchanged and what changes.
+
+```diff
+ <Mutation or request>
+   -> authorize and resolve input
+-  -> write the model directly
++  -> shared error boundary
++     -> DomainService.call(expected_version)
++        -> lock, version-check, validate, and write
+   -> return the result
+```
+
+Guidelines:
+
+- Prefix unchanged context lines with a space, removed paths with `-`, and new paths with `+`.
+- Keep the flow top-to-bottom and include only the layers needed to understand the architectural change.
+- Preserve unchanged entry points and results as context when the external contract stays the same.
+- For multiple independent entry points, label each operation in one block when it remains compact; use separate blocks only when one block becomes hard to scan.
+- Use exact method or class names only when they help reviewers navigate and the nesting has been verified.
+- Call it a call-stack diff only when it shows exact runtime method nesting; otherwise label it `Flow change`.
+- Do not combine a flow diff with a current-state request-flow diagram unless the user explicitly asks for both.
+
 ## Validation
 
 Only when you actually exercised the change and watched what happened. A passing spec suite is not validation — that's a command in the test steps. Nothing run, no section.
@@ -64,8 +117,11 @@ It goes in the testing section (a template's "How to Test", or its own heading),
 1. **A headline** — where it ran, when, and the score. `**Validated on staging (2026-07-15) — 9/9 PASS**, in a dedicated test folder with an empty decoy folder proving no wrong-parent writes.`
 2. **A table, one row per check.** Two shapes:
    - `| Check | Result |` when the expectation is obvious from the check itself (a round trip: toggle off → 404, toggle on → 200).
-   - `| # | Test | Expected | Observed | Result |` when expected-vs-observed is the point, and a reader should be able to count the passes.
+   - `| # | Behavior verified | Expected | Observed | Result |` when expected-vs-observed is the point, and a reader should be able to count the passes.
+   - Describe the behavior in plain language for a reviewer unfamiliar with the implementation. Keep fixture values, status codes, response fields, and version arithmetic in `Expected` and `Observed`.
 3. **A caveat** — what the run did *not* prove. "This staging host sits behind CloudFront, which ignores `Surrogate-*`, so the Fastly purge itself isn't observable here." This is often the most valuable line in the section; a run with a blind spot that goes unmentioned reads as a run with no blind spot.
+
+Make `Validation` and the generic test `Steps` sibling headings. When validation has distinct scopes, use concise subsections such as `Endpoint behavior` and `Existing-write compatibility`, each with its own environment, date, and score.
 
 Rows record what you saw, not what you meant to check: "Nothing created; decoy empty" beats "verified nothing was created." Never table a check you didn't run.
 
