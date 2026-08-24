@@ -8,7 +8,7 @@ cursor-style-blink = false
 
 mouse-hide-while-typing = true
 
-window-inherit-working-directory = false
+window-inherit-working-directory = true
 
 bell-features = audio
 
