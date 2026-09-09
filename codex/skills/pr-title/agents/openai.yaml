@@ -1,0 +1,4 @@
+interface:
+  display_name: "PR Title"
+  short_description: "Write consistent Conventional Commit PR titles"
+  default_prompt: "Use $pr-title to draft a concise pull request title."
