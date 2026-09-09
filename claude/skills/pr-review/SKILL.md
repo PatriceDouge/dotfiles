@@ -1,67 +1,72 @@
 ---
 name: pr-review
-description: Review a pull request or a branch in depth — understand it end-to-end first, then critique for what could be better, simpler, missed, unintended, or off-pattern. Use when asked to review a PR, review a branch before pushing, or give feedback on someone's changes.
+description: Review a pull request or local branch in depth by first understanding the change end-to-end, then identifying what could be better or simpler, what was missed, unintended consequences, and departures from general or repository-specific patterns. Use when asked to review a PR, review a branch before pushing, assess someone else's changes, or identify correctness, security, testing, migration, backfill, architecture, or maintainability risks.
 ---
 
 # PR review
 
 ## 1. Pick the target
 
-**Reviewing your own work** — no PR number given, or the PR named is Patrice's own and its branch is checked out. Review the **local branch or worktree**, not the PR: local is the source of truth and may be ahead of what's pushed.
+For the user's own work—when no PR is given, or when the named PR is theirs and its branch is checked out—review the local branch and worktree. Local is the source of truth and may be ahead of what is pushed.
 
 ```sh
-git diff $(git merge-base HEAD origin/main)...HEAD   # committed work on this branch
-git status --short && git diff                        # plus anything uncommitted
+git diff $(git merge-base HEAD origin/main)...HEAD
+git status --short
+git diff
 git log --oneline $(git merge-base HEAD origin/main)..HEAD
 ```
 
-**Reviewing someone else's work** — requires a PR number or URL. Read it through `gh`; don't check their branch out.
+For someone else's work, require a PR number or URL. Read it through Codex's connected GitHub app when available; use `gh` for unavailable data or CI details. Read the description and existing discussion before the diff. Do not check out another author's branch merely to review it.
 
-```sh
-gh pr view <n>            # description, comments, CI state — read this FIRST
-gh pr diff <n>
-```
+If asked to review someone else's work without a PR reference, ask for one.
 
-If you're asked to review someone else's work without a PR reference, ask for one.
+When a GitHub plugin skill is available, follow it for access mechanics. This skill owns review depth and output.
 
-## 2. Understand before you critique
+## 2. Understand before critiquing
 
-This phase is not output. It's the thing that makes the critique worth reading.
+This phase is not output. It is what makes the critique reliable.
 
-1. **Read the description.** What is this change *trying* to do? On an open PR, also read the existing comments — never hand back feedback someone already gave.
-2. **Understand the change end-to-end.** Not the hunks — the change. Where does it enter, what calls it, what does it touch, what is now true that wasn't? Open the files around the diff and the callers of what changed. A diff read in isolation produces confident, wrong review.
-3. **Learn the local patterns.** Read the repo's `CLAUDE.md`/conventions and the nearest existing implementation of the same kind of thing. "Off-pattern" is only meaningful relative to the actual pattern.
+1. Read the description. Establish what the change is trying to do. For an open PR, also read existing comments and relevant CI state; do not repeat feedback already given.
+2. Understand the change end-to-end, not just the hunks. Read the full diff and the relevant surrounding code, including callers, downstream consumers, tests, shared abstractions, persistence boundaries, side effects, and failure paths. Identify where behavior enters, what calls it, what it touches, and what is now true that was not before.
+3. Learn the local patterns. Read applicable `AGENTS.md` files and the nearest existing implementation of the same kind of behavior. Judge pattern alignment against the actual repository, not an abstract ideal.
+4. Verify uncertain behavior with focused read-only experiments or targeted tests when practical.
 
-If, after this, you don't understand the intent, ask. A partial review is fine; a guessed one isn't.
+If intent still cannot be established from the PR, repository, or linked context, ask. A partial review is better than a guessed one.
 
-## 3. The depth pass
+## 3. Run the depth pass
 
-Run every lens. They surface different things:
+Run every lens; they surface different problems.
 
-- **What could be better?** Correctness, naming, error paths, test coverage, security.
-- **What could be simpler?** Indirection that earns nothing, hand-rolled code where a utility exists, cases that collapse.
-- **What did we miss?** Edge cases, failure modes, tests, docs, migrations and backfills, feature-flag paths, rollback.
-- **Unintended consequences?** Blast radius. Who else calls this? What breaks at scale, under concurrency, on old data, for other callers?
-- **Off general best practice?** Only where it actually bites — not theory.
-- **Off *this codebase's* patterns?** Architecture, layering, existing abstractions. Consistency with surrounding code usually beats theoretical purity — but if the existing pattern *is* the problem, say so.
+- **What could be better?** Check correctness, naming, validation, authorization, security, error behavior, and test coverage.
+- **What could be simpler?** Look for unnecessary complexity: indirection that earns nothing, excessive states or branches, duplicated sources of truth, overly general solutions, cases that collapse, and hand-rolled behavior where a repository utility or established abstraction exists. Prefer a simpler approach only when it preserves intended behavior and reduces concrete cognitive load, testing surface, or defect risk; do not recommend abstraction or deduplication without a concrete benefit.
+- **What did we miss?** Check edge cases, failure modes, regression tests, documentation, migrations and backfills, old data, partial rollout, feature-flag paths, and rollback.
+- **What are the unintended consequences?** Trace blast radius across callers and consumers. Check scale, concurrency, retries, idempotency, external side effects, and behavior for other use cases.
+- **What departs from general best practice?** Raise it only where it creates a concrete risk or cost, not as theory.
+- **What departs from this codebase's patterns?** Check architecture, layering, conventions, and existing abstractions. Prefer consistency with surrounding code unless the existing pattern itself causes the problem; if so, say that explicitly.
 
-## 4. Output: ranked findings only
+Prefer concrete execution flows over hypothetical concerns. State whether an issue will occur, can occur under identified conditions, or remains uncertain.
 
-No walkthrough, no summary of the change, no section per lens, no praise. Just findings, **most serious first**:
+Before reporting a candidate finding, try to disprove it by checking guards, call-site constraints, framework behavior, tests, and repository conventions. Omit preferences, implausible scenarios, and valid observations whose benefit does not justify the author's effort. Report conditional risks only when they are material, naming the exact triggering conditions and keeping confidence separate from severity. Put material risks that cannot be verified in **What I couldn't review confidently** instead of presenting them as established findings.
 
-1. Correctness, data loss, security
+## 4. Report ranked findings only
+
+Do not include a walkthrough, change summary, section per lens, or praise. Return only actionable findings, most serious first:
+
+1. Correctness, data loss, and security
 2. Unintended consequences and blast radius
-3. Missed cases, missing tests
+3. Missed cases and missing tests
 4. Simplification and pattern alignment
-5. Nits — batched at the end, unranked
+5. Nits, batched at the end and unranked
 
-Each finding: what's wrong, why it matters, what to do instead, and `file.rb:42`. Close with a short **what I couldn't review confidently** list.
+For each finding, state what is wrong, the concrete scenario that triggers it, why it matters, the smallest reasonable fix direction, and an exact `file.rb:42` reference. Add a concise severity label when it helps the author prioritize. If uncertainty matters, state confidence separately rather than lowering severity solely because the issue could not be verified.
+
+Close with a short **What I couldn't review confidently** list. Include only meaningful verification gaps or residual risks. If there are no findings, say so and provide only that list.
 
 ## Rules
 
-- **Scale to the diff.** Same scrutiny, proportional output. A one-line change to auth or `ApplicationController` is not a one-line change to some model.
-- **Distinguish *will* be a problem from *might* be.** No speculative micro-optimizations; no "consider extracting" for its own sake.
-- **Say what you're unsure of.** Flagging a file you couldn't confidently assess is more useful than a confident guess about it.
-- **Every finding costs the author work.** If it isn't actionable and worth their time, cut it.
-- The author is a trusted, capable colleague. Criticism is expected; sycophancy and hedging aren't.
-- **Never post to GitHub.** Report in chat. Only post comments if Patrice explicitly asks, and then use the repo's emoji codes (👍❓❌🔧🙃💭🤡).
+- Scale output to the diff while keeping scrutiny proportional to risk. A one-line authentication or shared-framework change may need more investigation than a large isolated change.
+- Distinguish what will be a problem from what might be. Do not report speculative micro-optimizations or suggest extraction for its own sake.
+- Say what is uncertain. Flagging something that could not be assessed confidently is more useful than a confident guess.
+- Every finding costs the author work. If it is not actionable and worth their time, cut it.
+- Treat the author as a trusted, capable colleague. Criticism is expected; sycophancy and excessive hedging are not useful.
+- Never mutate GitHub state unless the user explicitly asks. When asked to draft feedback, provide comment-ready text and the exact file and line. When explicitly posting review comments, follow the repository's emoji conventions.

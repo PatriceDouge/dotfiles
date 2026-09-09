@@ -108,19 +108,42 @@ Guidelines:
 - Call it a call-stack diff only when it shows exact runtime method nesting; otherwise label it `Flow change`.
 - Do not combine a flow diff with a current-state request-flow diagram unless the user explicitly asks for both.
 
-## Report validation that was performed
+## Make "How to Test" about functional validation
 
-Include a validation table only when the change was actually exercised and its behavior observed. A passing automated suite is not validation; list those as commands in the test steps. Omit the section entirely when nothing was run.
+Use the template's "How to Test" section to show how the change was exercised through the meaningful product or operational path. Do not fill it with routine unit, integration, lint, or type-check commands that CI already runs. Include an automated command only when the user explicitly asks for it, CI cannot cover it, or running that command is itself the operational behavior under review (for example, a migration or Rake task).
 
-Place it in the testing section — the template's "How to Test" or nearest equivalent — above the reproduction steps, in three parts:
+Prefer two concise parts:
+
+1. `### Validation` records checks that were actually performed and observed. Omit it when nothing was run.
+2. `### Steps` tells a reviewer how to reproduce the important behavior through the UI, API, console, worker, migration workflow, or other real entry point. Include only the setup, identifiers, requests, and assertions needed to reach the result; omit implementation-level setup and CI commands.
+
+When reporting completed validation, use:
 
 1. A headline giving where it ran, when, and the outcome, such as `**Validated on staging (2026-07-15) — 9/9 PASS**`, with a clause on the setup when that setup is what makes the result trustworthy.
 2. A table with one row per check. Use `| Check | Result |` when the expectation follows from the check itself, or `| # | Behavior verified | Expected | Observed | Result |` when expected against observed is the point and the reader should be able to count passes. Describe the behavior in plain language for a reviewer unfamiliar with the implementation; keep fixture values, status codes, response fields, and version arithmetic in `Expected` and `Observed`.
 3. A caveat naming what the run did not prove — an environment that could not exercise the real code path, a check deferred, a result confirmed only indirectly.
 
-Make `Validation` and the generic test `Steps` sibling headings. When validation has distinct scopes, use concise subsections such as `Endpoint behavior` and `Existing-write compatibility`, each with its own environment, date, and score.
+When validation has distinct scopes, use concise subsections such as `Endpoint behavior` and `Existing-write compatibility`, each with its own environment, date, and score.
 
 Record observations rather than intentions. Never present an unrun check as passing.
+
+Good steps exercise the contract a reviewer cares about:
+
+```markdown
+### Steps
+
+1. Open the branch deploy and assign a named speaker to two transcript ranges.
+2. Reload the media and confirm both assignments persist.
+3. Open the same media in another tab, make a stale edit, and confirm the conflict message appears without overwriting the newer change.
+```
+
+Avoid replacing those steps with commands such as `bin/rspec ...`, `yarn test ...`, or `yarn ts:check`; CI is the evidence for those checks.
+
+### Branch-deploy validation
+
+When a Wistia branch deployment must be tested with Rails code from that PR, use `con -p<PR_NUMBER>` to open its branch console. Prefer exercising the real behavior through the branch UI or API, then use the console to select a safe fixture and inspect before/after state. A normal staging or production console does not run the branch's code.
+
+Branch deployments use shared staging data even though their application and Sidekiq processes are branch-specific. Use dedicated test records, avoid broad or destructive writes, and state any environment limitation in the validation caveat.
 
 ## Refine rather than regenerate
 

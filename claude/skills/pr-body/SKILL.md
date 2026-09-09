@@ -108,11 +108,16 @@ Guidelines:
 - Call it a call-stack diff only when it shows exact runtime method nesting; otherwise label it `Flow change`.
 - Do not combine a flow diff with a current-state request-flow diagram unless the user explicitly asks for both.
 
-## Validation
+## Make "How to Test" about functional validation
 
-Only when you actually exercised the change and watched what happened. A passing spec suite is not validation — that's a command in the test steps. Nothing run, no section.
+Use the template's "How to Test" section to show how the change was exercised through the meaningful product or operational path. Do not fill it with routine unit, integration, lint, or type-check commands that CI already runs. Include an automated command only when the user explicitly asks for it, CI cannot cover it, or running that command is itself the operational behavior under review (for example, a migration or Rake task).
 
-It goes in the testing section (a template's "How to Test", or its own heading), above the repro steps, in three parts:
+Prefer two concise parts:
+
+1. `### Validation` records checks that were actually performed and observed. Omit it when nothing was run.
+2. `### Steps` tells a reviewer how to reproduce the important behavior through the UI, API, console, worker, migration workflow, or other real entry point. Include only the setup, identifiers, requests, and assertions needed to reach the result; omit implementation-level setup and CI commands.
+
+When reporting completed validation, use:
 
 1. **A headline** — where it ran, when, and the score. `**Validated on staging (2026-07-15) — 9/9 PASS**, in a dedicated test folder with an empty decoy folder proving no wrong-parent writes.`
 2. **A table, one row per check.** Two shapes:
@@ -121,9 +126,27 @@ It goes in the testing section (a template's "How to Test", or its own heading),
    - Describe the behavior in plain language for a reviewer unfamiliar with the implementation. Keep fixture values, status codes, response fields, and version arithmetic in `Expected` and `Observed`.
 3. **A caveat** — what the run did *not* prove. "This staging host sits behind CloudFront, which ignores `Surrogate-*`, so the Fastly purge itself isn't observable here." This is often the most valuable line in the section; a run with a blind spot that goes unmentioned reads as a run with no blind spot.
 
-Make `Validation` and the generic test `Steps` sibling headings. When validation has distinct scopes, use concise subsections such as `Endpoint behavior` and `Existing-write compatibility`, each with its own environment, date, and score.
+When validation has distinct scopes, use concise subsections such as `Endpoint behavior` and `Existing-write compatibility`, each with its own environment, date, and score.
 
 Rows record what you saw, not what you meant to check: "Nothing created; decoy empty" beats "verified nothing was created." Never table a check you didn't run.
+
+Good steps exercise the contract a reviewer cares about:
+
+```markdown
+### Steps
+
+1. Open the branch deploy and assign a named speaker to two transcript ranges.
+2. Reload the media and confirm both assignments persist.
+3. Open the same media in another tab, make a stale edit, and confirm the conflict message appears without overwriting the newer change.
+```
+
+Avoid replacing those steps with commands such as `bin/rspec ...`, `yarn test ...`, or `yarn ts:check`; CI is the evidence for those checks.
+
+### Branch-deploy validation
+
+When a Wistia branch deployment must be tested with Rails code from that PR, use `con -p<PR_NUMBER>` to open its branch console. Prefer exercising the real behavior through the branch UI or API, then use the console to select a safe fixture and inspect before/after state. A normal staging or production console does not run the branch's code.
+
+Branch deployments use shared staging data even though their application and Sidekiq processes are branch-specific. Use dedicated test records, avoid broad or destructive writes, and state any environment limitation in the validation caveat.
 
 ## Where the format goes
 

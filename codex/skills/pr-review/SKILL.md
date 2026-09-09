@@ -27,7 +27,7 @@ When a GitHub plugin skill is available, follow it for access mechanics. This sk
 This phase is not output. It is what makes the critique reliable.
 
 1. Read the description. Establish what the change is trying to do. For an open PR, also read existing comments and relevant CI state; do not repeat feedback already given.
-2. Understand the change end-to-end, not just the hunks. Identify where behavior enters, what calls it, what it touches, and what is now true that was not before. Read every changed file in context and trace callers, downstream consumers, persistence boundaries, side effects, and failure paths.
+2. Understand the change end-to-end, not just the hunks. Read the full diff and the relevant surrounding code, including callers, downstream consumers, tests, shared abstractions, persistence boundaries, side effects, and failure paths. Identify where behavior enters, what calls it, what it touches, and what is now true that was not before.
 3. Learn the local patterns. Read applicable `AGENTS.md` files and the nearest existing implementation of the same kind of behavior. Judge pattern alignment against the actual repository, not an abstract ideal.
 4. Verify uncertain behavior with focused read-only experiments or targeted tests when practical.
 
@@ -38,13 +38,15 @@ If intent still cannot be established from the PR, repository, or linked context
 Run every lens; they surface different problems.
 
 - **What could be better?** Check correctness, naming, validation, authorization, security, error behavior, and test coverage.
-- **What could be simpler?** Look for indirection that earns nothing, cases that collapse, and hand-rolled behavior where a repository utility or established abstraction exists.
+- **What could be simpler?** Look for unnecessary complexity: indirection that earns nothing, excessive states or branches, duplicated sources of truth, overly general solutions, cases that collapse, and hand-rolled behavior where a repository utility or established abstraction exists. Prefer a simpler approach only when it preserves intended behavior and reduces concrete cognitive load, testing surface, or defect risk; do not recommend abstraction or deduplication without a concrete benefit.
 - **What did we miss?** Check edge cases, failure modes, regression tests, documentation, migrations and backfills, old data, partial rollout, feature-flag paths, and rollback.
 - **What are the unintended consequences?** Trace blast radius across callers and consumers. Check scale, concurrency, retries, idempotency, external side effects, and behavior for other use cases.
 - **What departs from general best practice?** Raise it only where it creates a concrete risk or cost, not as theory.
 - **What departs from this codebase's patterns?** Check architecture, layering, conventions, and existing abstractions. Prefer consistency with surrounding code unless the existing pattern itself causes the problem; if so, say that explicitly.
 
 Prefer concrete execution flows over hypothetical concerns. State whether an issue will occur, can occur under identified conditions, or remains uncertain.
+
+Before reporting a candidate finding, try to disprove it by checking guards, call-site constraints, framework behavior, tests, and repository conventions. Omit preferences, implausible scenarios, and valid observations whose benefit does not justify the author's effort. Report conditional risks only when they are material, naming the exact triggering conditions and keeping confidence separate from severity. Put material risks that cannot be verified in **What I couldn't review confidently** instead of presenting them as established findings.
 
 ## 4. Report ranked findings only
 
@@ -56,7 +58,7 @@ Do not include a walkthrough, change summary, section per lens, or praise. Retur
 4. Simplification and pattern alignment
 5. Nits, batched at the end and unranked
 
-For each finding, state what is wrong, the concrete scenario that triggers it, why it matters, the smallest reasonable fix direction, and an exact `file.rb:42` reference. Add a concise severity label when it helps the author prioritize.
+For each finding, state what is wrong, the concrete scenario that triggers it, why it matters, the smallest reasonable fix direction, and an exact `file.rb:42` reference. Add a concise severity label when it helps the author prioritize. If uncertainty matters, state confidence separately rather than lowering severity solely because the issue could not be verified.
 
 Close with a short **What I couldn't review confidently** list. Include only meaningful verification gaps or residual risks. If there are no findings, say so and provide only that list.
 
