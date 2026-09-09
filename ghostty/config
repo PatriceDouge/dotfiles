@@ -11,7 +11,7 @@ mouse-hide-while-typing = true
 window-inherit-working-directory = true
 
 bell-features = audio,attention,title,border
-bell-audio-path = /System/Library/Sounds/Glass.aiff
+bell-audio-path = /System/Library/Sounds/Hero.aiff
 bell-audio-volume = 0.45
 
 keybind = super+shift+e=equalize_splits
