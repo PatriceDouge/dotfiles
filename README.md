@@ -1,6 +1,6 @@
 # dotfiles
 
-Personal configuration files, symlinked into place from this repo.
+Personal and work configuration profiles, symlinked into place from this repo.
 
 ## Structure
 
@@ -14,20 +14,22 @@ dotfiles/
 │   └── com.patricedouge.ghostty-sessions.plist  # auto-snapshot sessions every 10 min
 ├── ghostty/
 │   └── config        # Ghostty terminal config
-├── claude/
-│   └── skills/           # personal Claude Code skills
-│       ├── agent-browser/ # default browser driver; defers to the CLI's own skills
-│       ├── pr-body/       # PR description format (features + bugs)
-│       └── pr-review/     # PR / branch review: understand e2e, then ranked findings
-└── codex/
-    ├── AGENTS.md        # personal Codex guidance
-    └── skills/         # personal Codex skills and UI metadata
-        ├── agent-browser/ # browser driving and UI verification
-        ├── pr-body/       # template-aware PR descriptions
-        └── pr-review/     # connector-first, end-to-end PR review
+├── personal/
+│   ├── claude/
+│   │   └── skills/     # personal Claude Code skills
+│   └── codex/
+│       ├── AGENTS.md   # personal Codex guidance
+│       └── skills/     # personal Codex skills and UI metadata
+└── work/
+    ├── claude/
+    │   └── skills/     # work Claude Code skills
+    └── codex/
+        ├── AGENTS.md   # work Codex guidance
+        └── skills/     # work Codex skills and UI metadata
 ```
 
-Claude Code and Codex skills here are personal and portable — they apply in every repo.
+The two profiles initially contain the same Claude Code and Codex configuration,
+so they can evolve independently. Skills in the selected profile apply in every repo.
 Repo-specific conventions (PR templates, labels, CI, team workflows) stay in that
 repo's own agent configuration, and these skills defer to them.
 
@@ -36,8 +38,16 @@ repo's own agent configuration, and these skills defer to them.
 ```sh
 git clone git@github.com:PatriceDouge/dotfiles.git /Volumes/CaseSensitive/dotfiles
 cd /Volumes/CaseSensitive/dotfiles
-./install.sh
+./install.sh personal
 ```
+
+On a work machine, select the work profile instead:
+
+```sh
+./install.sh work
+```
+
+Running `./install.sh` without an argument defaults to `personal`.
 
 Clone anywhere you like — `install.sh` derives its own location, so the target
 directory doesn't matter. If you clone onto an external volume (as above), that
@@ -54,10 +64,10 @@ already exists at the destination, it's moved aside to `<file>.bak` first.
 |         |                       | Linux: `~/.config/ghostty/config`                               |
 | Scripts | `bin/<name>`          | `~/.local/bin/<name>`                                           |
 | launchd | `launchd/<label>.plist` | copied (not symlinked — launchd wants real files) to `~/Library/LaunchAgents/` and loaded via `launchctl bootstrap` |
-| Claude  | `claude/skills/<name>` | `~/.claude/skills/<name>` (each skill linked individually, so plugin-installed skills are left alone) |
-| Codex   | `codex/skills/<name>`  | `~/.codex/skills/<name>` (each skill linked individually, so built-in and plugin skills are left alone) |
+| Claude  | `<profile>/claude/skills/<name>` | `~/.claude/skills/<name>` (each skill linked individually, so plugin-installed skills are left alone) |
+| Codex   | `<profile>/codex/skills/<name>`  | `~/.codex/skills/<name>` (each skill linked individually, so built-in and plugin skills are left alone) |
 |         | safety defaults        | merged into `~/.codex/config.toml` without tracking credentials or machine-specific state |
-|         | `codex/AGENTS.md`      | `~/.codex/AGENTS.md`                                            |
+|         | `<profile>/codex/AGENTS.md`      | `~/.codex/AGENTS.md`                              |
 
 The portable Codex defaults keep the sandbox in `workspace-write`, retain
 interactive approval boundaries, and send eligible approval requests through
@@ -67,5 +77,5 @@ the untracked `~/.codex/AGENTS.local.md` file.
 
 ## Editing
 
-Edit files in this repo (or via the symlinked path — same file), then commit.
+Edit files under the selected profile (or via the symlinked path — same file), then commit.
 The repo is the source of truth.

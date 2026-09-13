@@ -1,0 +1,4 @@
+interface:
+  display_name: "PR Review"
+  short_description: "Review pull requests with ranked findings"
+  default_prompt: "Use $pr-review to review this pull request for actionable issues."

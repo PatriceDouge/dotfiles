@@ -1,0 +1,4 @@
+interface:
+  display_name: "Rebase PR Stack"
+  short_description: "Safely rebase and synchronize stacked pull requests"
+  default_prompt: "Use $pr-stack-rebase to safely rebase and synchronize this pull request stack."

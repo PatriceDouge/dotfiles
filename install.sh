@@ -3,12 +3,31 @@
 set -euo pipefail
 
 DOTFILES_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROFILE="${1:-personal}"
+
+if [ "$#" -gt 1 ]; then
+  echo "Usage: $0 [personal|work]" >&2
+  exit 1
+fi
+
+case "$PROFILE" in
+  personal|work) ;;
+  *)
+    echo "Unknown profile: $PROFILE" >&2
+    echo "Usage: $0 [personal|work]" >&2
+    exit 1
+    ;;
+esac
+
+PROFILE_DIR="$DOTFILES_DIR/$PROFILE"
 
 link() {
   local src="$1" dest="$2"
   mkdir -p "$(dirname "$dest")"
   if [ -L "$dest" ]; then
-    rm "$dest"                         # replace an existing symlink
+    ln -sfn "$src" "$dest"
+    echo "Linked $dest -> $src"
+    return
   elif [ -e "$dest" ]; then
     echo "Backing up existing $dest -> $dest.bak"
     mv "$dest" "$dest.bak"
@@ -81,7 +100,7 @@ fi
 # --- Claude Code -----------------------------------------------------------
 # Link skills one at a time rather than linking ~/.claude/skills wholesale, so
 # plugin-installed skills already living there are left in place.
-for skill in "$DOTFILES_DIR"/claude/skills/*/; do
+for skill in "$PROFILE_DIR"/claude/skills/*/; do
   link "${skill%/}" "$HOME/.claude/skills/$(basename "$skill")"
 done
 
@@ -93,12 +112,12 @@ set_codex_root_setting "$CODEX_CONFIG" "approval_policy" '"on-request"'
 set_codex_root_setting "$CODEX_CONFIG" "approvals_reviewer" '"auto_review"'
 set_codex_root_setting "$CODEX_CONFIG" "sandbox_mode" '"workspace-write"'
 
-# Link personal skills one at a time so built-in .system and plugin-installed
+# Link profile skills one at a time so built-in .system and plugin-installed
 # skills already living under ~/.codex/skills are left in place.
-for skill in "$DOTFILES_DIR"/codex/skills/*/; do
+for skill in "$PROFILE_DIR"/codex/skills/*/; do
   link "${skill%/}" "$HOME/.codex/skills/$(basename "$skill")"
 done
 
-link "$DOTFILES_DIR/codex/AGENTS.md" "$HOME/.codex/AGENTS.md"
+link "$PROFILE_DIR/codex/AGENTS.md" "$HOME/.codex/AGENTS.md"
 
-echo "Done."
+echo "Done. Installed $PROFILE profile."
