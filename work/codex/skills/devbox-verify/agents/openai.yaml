@@ -1,0 +1,4 @@
+interface:
+  display_name: "Devbox Verify"
+  short_description: "Verify a branch on a cloud devbox before pushing"
+  default_prompt: "Use $devbox-verify to verify this change on a devbox before I push."

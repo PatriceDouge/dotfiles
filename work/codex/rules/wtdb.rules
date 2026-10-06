@@ -1,0 +1,7 @@
+# wt-devbox: run devbox verification outside the sandbox without prompting.
+# Destructive verbs stay behind a prompt.
+prefix_rule(pattern=["wtdb", ["version", "status", "pool", "config", "ensure", "sync", "wait", "url", "ssh", "logs", "run", "browser", "restart", "reconcile", "doctor", "stop"]], decision="allow")
+prefix_rule(pattern=["wtdb", ["delete", "detach", "reap-orphan-devboxes", "reap-worktrees", "cleanup-merged", "catch-up", "upgrade"]], decision="prompt")
+prefix_rule(pattern=["devbox", ["ssh", "list"]], decision="allow")
+prefix_rule(pattern=["devbox", "auth", "status"], decision="allow")
+prefix_rule(pattern=["agent-browser", "--cdp"], decision="allow")

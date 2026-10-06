@@ -9,3 +9,7 @@ Trash operation. Prefer `trash` when it is installed; on macOS, use
 
 If `~/.codex/AGENTS.local.md` exists, read it before starting work. It contains
 machine-specific guidance that is intentionally excluded from dotfiles.
+
+## Verifying changes on a devbox
+
+Before proposing a push or PR for a change that affects how the Wistia app runs (controllers, GraphQL, frontend, migrations, workers, cable, agent or MCP tools), verify it on a wt-devbox with the `$devbox-verify` skill instead of waiting on a branch deploy. Skip it for docs, comment, or spec-only changes, and say so. When the user asks to verify or test something "on a devbox", always use it.
